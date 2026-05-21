@@ -1,19 +1,15 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
 
 st.set_page_config(
-    page_title="Dashboard Tenis Big Data",
+    page_title="Dashboard Tenis ATP",
     layout="wide"
 )
 
-st.title("Dashboard Big Data - Rendimiento del saque en tenis ATP")
-
-st.write("""
-Este dashboard analiza la relación entre la altura de los jugadores y distintas métricas del saque:
-porcentaje de primer saque, aces y dobles faltas.
-""")
+# =========================
+# CARGA DE DATOS
+# =========================
 
 @st.cache_data
 def load_data():
@@ -32,98 +28,292 @@ def load_data():
 
 data = load_data()
 
-st.sidebar.header("Filtros")
+# =========================
+# TÍTULO
+# =========================
+
+st.title("Dashboard Big Data: Rendimiento del saque en tenis ATP")
+
+st.markdown("""
+Análisis interactivo sobre la relación entre la **altura de los jugadores** y diferentes métricas del saque:
+porcentaje de primer saque, aces, dobles faltas y rendimiento según superficie.
+""")
+
+# =========================
+# SIDEBAR
+# =========================
+
+st.sidebar.title("Filtros del análisis")
 
 surface_filter = st.sidebar.multiselect(
-    "Selecciona superficie",
-    options=data["surface"].dropna().unique(),
-    default=data["surface"].dropna().unique()
+    "Superficie",
+    options=sorted(data["surface"].dropna().unique()),
+    default=sorted(data["surface"].dropna().unique())
 )
 
 height_filter = st.sidebar.multiselect(
-    "Selecciona grupo de altura",
-    options=data["height_group"].dropna().unique(),
-    default=data["height_group"].dropna().unique()
+    "Grupo de altura",
+    options=["<180", "180-190", "190-200", "200+"],
+    default=["<180", "180-190", "190-200", "200+"]
 )
 
-filtered_data = data[
+year_filter = st.sidebar.multiselect(
+    "Año",
+    options=sorted(data["year"].dropna().unique()),
+    default=sorted(data["year"].dropna().unique())
+)
+
+filtered = data[
     (data["surface"].isin(surface_filter)) &
-    (data["height_group"].isin(height_filter))
+    (data["height_group"].isin(height_filter)) &
+    (data["year"].isin(year_filter))
 ]
+
+# =========================
+# KPIs
+# =========================
 
 st.subheader("Indicadores principales")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
-col1.metric("Registros analizados", len(filtered_data))
-col2.metric("Altura media", round(filtered_data["height"].mean(), 2))
-col3.metric("Aces medios", round(filtered_data["aces"].mean(), 2))
-col4.metric("Primer saque medio", round(filtered_data["first_serve_pct"].mean(), 2))
+col1.metric("Registros", f"{len(filtered):,}")
+col2.metric("Jugadores", filtered["player_name"].nunique())
+col3.metric("Altura media", round(filtered["height"].mean(), 1))
+col4.metric("Aces medios", round(filtered["aces"].mean(), 2))
+col5.metric("Primer saque medio", f"{round(filtered['first_serve_pct'].mean(), 2)}%")
 
-st.subheader("Aces medios por grupo de altura")
+st.divider()
 
-fig1, ax1 = plt.subplots(figsize=(10, 5))
-sns.barplot(
-    data=filtered_data,
-    x="height_group",
-    y="aces",
-    order=["<180", "180-190", "190-200", "200+"],
-    ax=ax1
-)
-ax1.set_xlabel("Grupo de altura")
-ax1.set_ylabel("Media de aces")
-st.pyplot(fig1)
+# =========================
+# PESTAÑAS
+# =========================
 
-st.subheader("Porcentaje de primer saque por grupo de altura")
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "Resumen ejecutivo",
+    "Altura y saque",
+    "Superficies",
+    "Jugadores",
+    "Datos"
+])
 
-fig2, ax2 = plt.subplots(figsize=(10, 5))
-sns.barplot(
-    data=filtered_data,
-    x="height_group",
-    y="first_serve_pct",
-    order=["<180", "180-190", "190-200", "200+"],
-    ax=ax2
-)
-ax2.set_xlabel("Grupo de altura")
-ax2.set_ylabel("Porcentaje medio de primer saque")
-st.pyplot(fig2)
+# =========================
+# TAB 1
+# =========================
 
-st.subheader("Aces medios por superficie")
+with tab1:
+    st.subheader("Visión general del rendimiento del saque")
 
-fig3, ax3 = plt.subplots(figsize=(10, 5))
-sns.barplot(
-    data=filtered_data,
-    x="surface",
-    y="aces",
-    ax=ax3
-)
-ax3.set_xlabel("Superficie")
-ax3.set_ylabel("Media de aces")
-st.pyplot(fig3)
+    col1, col2 = st.columns(2)
 
-st.subheader("Dobles faltas por grupo de altura")
+    avg_by_height = filtered.groupby("height_group", as_index=False)[
+        ["aces", "first_serve_pct", "double_faults"]
+    ].mean()
 
-fig4, ax4 = plt.subplots(figsize=(10, 5))
-sns.barplot(
-    data=filtered_data,
-    x="height_group",
-    y="double_faults",
-    order=["<180", "180-190", "190-200", "200+"],
-    ax=ax4
-)
-ax4.set_xlabel("Grupo de altura")
-ax4.set_ylabel("Media de dobles faltas")
-st.pyplot(fig4)
+    with col1:
+        fig = px.bar(
+            avg_by_height,
+            x="height_group",
+            y="aces",
+            title="Aces medios por grupo de altura",
+            labels={"height_group": "Grupo de altura", "aces": "Aces medios"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("Tabla de datos filtrada")
+    with col2:
+        fig = px.bar(
+            avg_by_height,
+            x="height_group",
+            y="first_serve_pct",
+            title="Porcentaje medio de primer saque por grupo de altura",
+            labels={"height_group": "Grupo de altura", "first_serve_pct": "% primer saque"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-st.dataframe(filtered_data.head(100))
+    st.info(
+        "Conclusión inicial: la altura no parece explicar por sí sola el porcentaje de primer saque, "
+        "pero sí muestra una relación más clara con la generación de aces."
+    )
 
-st.subheader("Conclusiones principales")
+# =========================
+# TAB 2
+# =========================
 
-st.write("""
-- La altura no muestra una relación fuerte con el porcentaje de primer saque.
-- Los jugadores más altos tienden a generar más aces.
-- La superficie influye claramente en el rendimiento del saque.
-- El análisis permite comparar grupos de altura y superficies de forma visual.
+with tab2:
+    st.subheader("Análisis de altura y métricas del saque")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig = px.scatter(
+            filtered,
+            x="height",
+            y="first_serve_pct",
+            color="surface",
+            opacity=0.5,
+            title="Altura vs porcentaje de primer saque",
+            labels={
+                "height": "Altura",
+                "first_serve_pct": "% primer saque",
+                "surface": "Superficie"
+            }
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        fig = px.scatter(
+            filtered,
+            x="height",
+            y="aces",
+            color="surface",
+            opacity=0.5,
+            title="Altura vs número de aces",
+            labels={
+                "height": "Altura",
+                "aces": "Aces",
+                "surface": "Superficie"
+            }
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    corr = filtered[["height", "first_serve_pct", "aces", "double_faults"]].corr()
+
+    st.markdown("### Matriz de correlación")
+
+    fig = px.imshow(
+        corr,
+        text_auto=True,
+        title="Correlación entre altura y métricas del saque",
+        color_continuous_scale="Blues"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# =========================
+# TAB 3
+# =========================
+
+with tab3:
+    st.subheader("Comparativa por superficie")
+
+    surface_summary = filtered.groupby("surface", as_index=False).agg(
+        aces_medios=("aces", "mean"),
+        primer_saque_medio=("first_serve_pct", "mean"),
+        dobles_faltas_medias=("double_faults", "mean"),
+        registros=("aces", "count")
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig = px.bar(
+            surface_summary,
+            x="surface",
+            y="aces_medios",
+            title="Aces medios por superficie",
+            labels={"surface": "Superficie", "aces_medios": "Aces medios"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        fig = px.bar(
+            surface_summary,
+            x="surface",
+            y="primer_saque_medio",
+            title="Primer saque medio por superficie",
+            labels={"surface": "Superficie", "primer_saque_medio": "% primer saque"}
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    height_surface = filtered.groupby(
+        ["height_group", "surface"], as_index=False
+    )["aces"].mean()
+
+    fig = px.bar(
+        height_surface,
+        x="height_group",
+        y="aces",
+        color="surface",
+        barmode="group",
+        title="Aces medios por grupo de altura y superficie",
+        labels={
+            "height_group": "Grupo de altura",
+            "aces": "Aces medios",
+            "surface": "Superficie"
+        }
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# =========================
+# TAB 4
+# =========================
+
+with tab4:
+    st.subheader("Ranking de jugadores")
+
+    min_matches = st.slider(
+        "Número mínimo de registros por jugador",
+        min_value=1,
+        max_value=50,
+        value=5
+    )
+
+    player_summary = filtered.groupby("player_name", as_index=False).agg(
+        altura=("height", "mean"),
+        registros=("aces", "count"),
+        aces_medios=("aces", "mean"),
+        primer_saque_medio=("first_serve_pct", "mean"),
+        dobles_faltas_medias=("double_faults", "mean")
+    )
+
+    player_summary = player_summary[player_summary["registros"] >= min_matches]
+
+    top_aces = player_summary.sort_values("aces_medios", ascending=False).head(15)
+
+    fig = px.bar(
+        top_aces,
+        x="aces_medios",
+        y="player_name",
+        orientation="h",
+        title="Top 15 jugadores por aces medios",
+        labels={
+            "aces_medios": "Aces medios",
+            "player_name": "Jugador"
+        }
+    )
+
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.dataframe(player_summary.sort_values("aces_medios", ascending=False))
+
+# =========================
+# TAB 5
+# =========================
+
+with tab5:
+    st.subheader("Datos filtrados")
+
+    st.dataframe(filtered)
+
+    csv = filtered.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="Descargar datos filtrados",
+        data=csv,
+        file_name="datos_filtrados_tenis.csv",
+        mime="text/csv"
+    )
+
+# =========================
+# CONCLUSIÓN FINAL
+# =========================
+
+st.divider()
+
+st.markdown("""
+### Conclusión general
+
+El análisis muestra que la altura no tiene una relación fuerte con el porcentaje de primeros saques,
+pero sí parece estar más relacionada con la generación de aces. Además, la superficie introduce
+diferencias importantes en el rendimiento del saque, especialmente en pistas rápidas.
 """)
